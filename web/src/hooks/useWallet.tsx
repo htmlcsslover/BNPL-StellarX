@@ -1,9 +1,8 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, createContext, useContext, ReactNode } from 'react';
 
 const TIMEOUT_MS = 3000;
 
-// Freighter API calls can hang if the extension is missing — race them with a timeout.
 function withTimeout<T>(p: Promise<T>, fallback: T, ms = TIMEOUT_MS): Promise<T> {
   return Promise.race([
     p,
@@ -15,11 +14,13 @@ export interface WalletState {
   publicKey: string | null;
   connecting: boolean;
   error: string | null;
-  connect: () => void;
+  connect: () => Promise<void>;
   disconnect: () => void;
 }
 
-export function useWallet(): WalletState {
+const WalletContext = createContext<WalletState | undefined>(undefined);
+
+export function WalletProvider({ children }: { children: ReactNode }) {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,6 @@ export function useWallet(): WalletState {
     setConnecting(true);
     setError(null);
     try {
-      // Dynamic import only — a static import breaks SSR (browser globals).
       const freighter = await import('@stellar/freighter-api');
 
       const connected = await withTimeout(freighter.isConnected(), {
@@ -40,15 +40,16 @@ export function useWallet(): WalletState {
         );
       }
 
-      // requestAccess() prompts the user and returns their address (Freighter v6).
       const access = await freighter.requestAccess();
       if (access.error) throw new Error(access.error);
       if (!access.address) {
         throw new Error('No address returned — did you approve the request?');
       }
 
+      console.log('Wallet connected:', access.address);
       setPublicKey(access.address);
     } catch (e: unknown) {
+      console.error('Wallet connection error:', e);
       setError(e instanceof Error ? e.message : 'Failed to connect wallet');
     } finally {
       setConnecting(false);
@@ -60,5 +61,17 @@ export function useWallet(): WalletState {
     setError(null);
   }, []);
 
-  return { publicKey, connecting, error, connect, disconnect };
+  return (
+    <WalletContext.Provider value={{ publicKey, connecting, error, connect, disconnect }}>
+      {children}
+    </WalletContext.Provider>
+  );
+}
+
+export function useWallet(): WalletState {
+  const context = useContext(WalletContext);
+  if (context === undefined) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
 }

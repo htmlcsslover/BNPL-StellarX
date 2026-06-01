@@ -1,60 +1,56 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { fetchBalances, type Balances } from '@/lib/balances';
+import { Balances } from '@/lib/balances';
 
 export default function BalanceCard({
+  balances,
   publicKey,
-  refreshKey,
 }: {
+  balances: Balances;
   publicKey: string;
-  refreshKey: number;
 }) {
-  const [balances, setBalances] = useState<Balances | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchBalances(publicKey)
-      .then((b) => active && setBalances(b))
-      .catch(() => active && setBalances(null))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [publicKey, refreshKey]);
-
-  if (loading) {
-    return (
-      <div className="mt-4 grid animate-pulse grid-cols-2 gap-4">
-        <div className="h-20 rounded bg-gray-200" />
-        <div className="h-20 rounded bg-gray-200" />
-      </div>
-    );
-  }
-
-  if (balances && !balances.funded) {
-    return (
-      <p className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        This account isn’t funded yet. Click “Fund with Friendbot” above.
-      </p>
-    );
-  }
-
-  if (!balances) {
-    return <p className="mt-4 text-sm text-red-500">Failed to load balances.</p>;
-  }
-
   return (
-    <div className="mt-4 grid grid-cols-2 gap-4">
-      <div className="rounded border border-gray-200 bg-white p-4">
-        <p className="text-xs uppercase tracking-wide text-gray-500">XLM</p>
-        <p className="text-2xl font-bold text-gray-900">{balances.xlm}</p>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-6 glass">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">
+            Wallet Balance
+          </p>
+          <p className="font-mono text-xs text-gray-500 truncate w-32 md:w-auto opacity-70">
+            {publicKey}
+          </p>
+        </div>
+        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white shadow-lg shadow-purple-500/20 uppercase">
+          STLR
+        </div>
       </div>
-      <div className="rounded border border-gray-200 bg-white p-4">
-        <p className="text-xs uppercase tracking-wide text-gray-500">USDC</p>
-        <p className="text-2xl font-bold text-gray-900">{balances.usdc}</p>
-      </div>
+
+      {!balances.funded ? (
+        <div className="py-4">
+          <p className="text-sm text-amber-400/80 italic">
+            Account not funded. Use Faucet below to activate.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-end gap-2">
+            <p className="text-5xl font-black tracking-tighter text-white">
+              {balances.xlm}
+            </p>
+            <p className="text-xl font-bold text-gray-400 pb-1.5 uppercase">XLM</p>
+          </div>
+          
+          <div className="pt-4 border-t border-white/5 flex gap-4">
+            <div className="flex-1">
+              <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Status</p>
+              <p className="text-xs text-emerald-400 font-bold">Active On-chain</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Network</p>
+              <p className="text-xs text-white font-bold">Stellar Testnet</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

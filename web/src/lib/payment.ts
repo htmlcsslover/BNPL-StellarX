@@ -2,58 +2,67 @@ import {
   TransactionBuilder,
   Operation,
   Asset,
-  BASE_FEE,
+  TimeoutInfinite,
+  Transaction,
 } from '@stellar/stellar-sdk';
-import { server, NETWORK_PASSPHRASE, USDC_ISSUER } from './stellar';
+import { server, NETWORK_PASSPHRASE } from './stellar';
 
-export type AssetCode = 'XLM' | 'USDC';
+export type AssetCode = 'XLM';
 
-/** Build an unsigned classic payment transaction and return its XDR. */
+/**
+ * Build a simple payment transaction (XLM).
+ */
 export async function buildPaymentXDR(
-  sender: string,
-  destination: string,
+  from: string,
+  to: string,
   amount: string,
-  assetCode: AssetCode,
 ): Promise<string> {
-  const asset =
-    assetCode === 'XLM' ? Asset.native() : new Asset('USDC', USDC_ISSUER);
-
-  // Always load the account fresh so we have the current sequence number.
-  const account = await server.getAccount(sender);
+  const account = await server.getAccount(from);
+  const asset = Asset.native();
 
   const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
+    fee: '1000',
     networkPassphrase: NETWORK_PASSPHRASE,
   })
-    .addOperation(Operation.payment({ destination, asset, amount }))
-    .setTimeout(60)
+    .addOperation(
+      Operation.payment({
+        destination: to,
+        asset,
+        amount,
+      }),
+    )
+    .setTimeout(TimeoutInfinite)
     .build();
 
   return tx.toXDR();
 }
 
-/** Submit a Freighter-signed XDR. Returns the transaction hash. */
-export async function submitSignedXDR(signedXdr: string): Promise<string> {
-  const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+/**
+ * Submits a signed XDR to the network.
+ */
+export async function submitSignedXDR(xdr: string): Promise<string> {
+  const tx = new Transaction(xdr, NETWORK_PASSPHRASE);
   const res = await server.sendTransaction(tx);
-  if (res.status === 'ERROR') {
-    throw new Error(`Submit rejected: ${JSON.stringify(res.errorResult ?? res)}`);
+  if (res.status !== 'PENDING') {
+    throw new Error(`Transaction submission failed: ${res.status}`);
   }
   return res.hash;
 }
 
 /**
- * Poll until the transaction reaches finality.
- * `sendTransaction` returning PENDING is NOT success — you must poll.
+ * Polls for transaction results until it is either SUCCESS or FAILED.
  */
 export async function pollTransaction(hash: string): Promise<void> {
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
+  let attempts = 0;
+  while (attempts < 60) {
     const res = await server.getTransaction(hash);
-    if (res.status !== 'NOT_FOUND') {
-      if (res.status === 'SUCCESS') return;
-      throw new Error(`Transaction ${res.status}`);
+    if (res.status === 'SUCCESS') return;
+    if (res.status === 'FAILED') {
+      throw new Error(`Transaction failed: ${JSON.stringify(res.resultMetaXdr)}`);
     }
+    // Still pending, wait 1s
+    await new Promise((r) => setTimeout(r, 1000));
+    attempts++;
   }
-  throw new Error('Transaction timed out after 60s');
+  throw new Error('Transaction polling timed out (60s)');
 }
