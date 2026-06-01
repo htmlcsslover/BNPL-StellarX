@@ -117,27 +117,27 @@ export default function CommunityPool() {
         {/* Manage Funds */}
         <div className="lg:col-span-2 space-y-10">
           <section>
-             <h2 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-3">
-               <span className="w-10 h-10 rounded-2xl bg-purple-600/10 flex items-center justify-center text-xl font-bold uppercase border border-purple-500/20 italic">Liquidity</span>
+             <h2 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-4">
+               <span className="px-3 py-1.5 rounded-xl bg-purple-600/10 flex items-center justify-center text-[10px] font-black uppercase border border-purple-500/20 italic tracking-widest text-purple-400">Liquidity</span>
                Manage Your Liquidity
              </h2>
-             <div className="glass p-10 rounded-[3rem] border border-white/10 relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-5 select-none pointer-events-none">
-                 <span className="text-9xl font-black italic uppercase">DEPOSIT</span>
+             <div className="glass p-8 md:p-12 rounded-[3rem] border border-white/10 relative overflow-hidden">
+               <div className="absolute -top-6 -right-6 p-8 opacity-[0.02] select-none pointer-events-none">
+                 <span className="text-8xl font-black italic uppercase">DEPOSIT</span>
                </div>
                
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-12 relative z-10">
                  <div>
                     <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Amount to Provide (XLM)</label>
-                    <div className="relative mb-6">
+                    <div className="relative mb-8">
                       <input 
                         type="number" 
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00" 
-                        className="w-full bg-white/5 border border-white/10 rounded-3xl px-6 py-6 focus:outline-none focus:border-purple-500 text-3xl font-black text-white placeholder:text-white/10" 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 focus:outline-none focus:border-purple-500 text-2xl font-bold text-white transition-all placeholder:text-white/10" 
                       />
-                      <div className="absolute right-6 top-1/2 -translate-y-1/2 text-sm font-black text-gray-500 uppercase">XLM</div>
+                      <div className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500 uppercase tracking-widest">XLM</div>
                     </div>
 
                     {statusMessage.text && (
@@ -146,15 +146,15 @@ export default function CommunityPool() {
                       </p>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4">
                       <button 
                         onClick={handleDeposit}
                         disabled={loading}
-                        className="py-5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-[1.5rem] transition-all shadow-xl shadow-purple-500/20 uppercase tracking-widest italic text-xs"
+                        className="flex-1 py-5 px-8 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all shadow-xl shadow-purple-500/20 uppercase tracking-widest italic text-xs"
                       >
                         {loading ? 'Processing...' : 'Provide XLM'}
                       </button>
-                      <button className="py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-[1.5rem] transition-all uppercase tracking-widest text-xs">Withdraw</button>
+                      <button className="flex-1 py-5 px-8 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-2xl transition-all uppercase tracking-widest text-xs">Withdraw</button>
                     </div>
                  </div>
 
@@ -176,8 +176,8 @@ export default function CommunityPool() {
 
           {isSponsorMode && (
             <section className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-               <h2 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-3">
-                 <span className="w-10 h-10 rounded-2xl bg-indigo-600/10 flex items-center justify-center text-xl font-bold uppercase border border-indigo-500/20 italic">Target</span>
+               <h2 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-4">
+                 <span className="px-3 py-1.5 rounded-xl bg-indigo-600/10 flex items-center justify-center text-[10px] font-black uppercase border border-indigo-500/20 italic tracking-widest text-indigo-400">Target</span>
                  Select Target Community
                </h2>
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -198,11 +198,11 @@ export default function CommunityPool() {
 
         {/* Pool Activity */}
         <div className="space-y-10">
-          <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-emerald-600/10 flex items-center justify-center text-xl font-bold uppercase border border-emerald-500/20 italic">Activity</span>
+          <h2 className="text-2xl font-black tracking-tight flex items-center gap-4">
+            <span className="px-3 py-1.5 rounded-xl bg-emerald-600/10 flex items-center justify-center text-[10px] font-black uppercase border border-emerald-500/20 italic tracking-widest text-emerald-400">Activity</span>
             Pool Activity
           </h2>
-          <div className="glass p-8 rounded-[3rem] border border-white/10 space-y-6 relative overflow-hidden bg-gradient-to-br from-white/[0.02] to-transparent">
+          <div className="glass p-8 rounded-[2.5rem] border border-white/10 space-y-6 relative overflow-hidden bg-gradient-to-br from-white/[0.02] to-transparent">
             {[
               { type: 'Loan Funded', amount: '-300 XLM', date: '2 hours ago', status: 'Active', user: 'Maria' },
               { type: 'Repayment Received', amount: '+100 XLM', date: '5 hours ago', status: 'Success', user: 'User' },
@@ -211,17 +211,17 @@ export default function CommunityPool() {
             ].map((activity, i) => (
               <div key={i} className="flex justify-between items-center pb-6 border-b border-white/5 last:border-0 last:pb-0 group cursor-default">
                 <div>
-                  <p className="font-black text-sm text-white group-hover:text-purple-400 transition-colors uppercase tracking-tighter italic">{activity.type}</p>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{activity.date} • {activity.user}</p>
+                  <p className="font-black text-xs text-white group-hover:text-purple-400 transition-colors uppercase tracking-tight italic mb-1">{activity.type}</p>
+                  <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{activity.date} • {activity.user}</p>
                 </div>
                 <div className="text-right">
-                  <p className={`font-black text-lg tracking-tighter ${activity.amount.startsWith('+') ? 'text-emerald-400' : 'text-red-500'}`}>{activity.amount}</p>
-                  <p className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block ${activity.status === 'Active' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-emerald-500/10 text-emerald-500'}`}>{activity.status}</p>
+                  <p className={`font-black text-base tracking-tighter mb-1 ${activity.amount.startsWith('+') ? 'text-emerald-400' : 'text-red-500'}`}>{activity.amount}</p>
+                  <p className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full inline-block ${activity.status === 'Active' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-emerald-500/10 text-emerald-500'}`}>{activity.status}</p>
                 </div>
               </div>
             ))}
             
-            <button className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-[10px] font-black text-gray-400 hover:text-white transition uppercase tracking-[0.2em]">View All Analytics</button>
+            <button className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-[9px] font-black text-gray-500 hover:text-white transition uppercase tracking-[0.2em] mt-4">View All Analytics</button>
           </div>
 
           <div className="glass p-8 rounded-[2.5rem] border border-white/5 bg-gradient-to-tr from-indigo-500/[0.05] to-transparent">

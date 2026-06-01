@@ -15,10 +15,15 @@ export type AssetCode = 'XLM';
 export async function buildPaymentXDR(
   from: string,
   to: string,
-  amount: string,
+  amount: string | number,
 ): Promise<string> {
   const account = await server.getAccount(from);
   const asset = Asset.native();
+
+  // Ensure amount is a string with at most 7 decimal places for Stellar SDK
+  const formattedAmount = typeof amount === 'number' 
+    ? amount.toFixed(7) 
+    : parseFloat(amount).toFixed(7);
 
   const tx = new TransactionBuilder(account, {
     fee: '1000',
@@ -28,7 +33,7 @@ export async function buildPaymentXDR(
       Operation.payment({
         destination: to,
         asset,
-        amount,
+        amount: formattedAmount,
       }),
     )
     .setTimeout(TimeoutInfinite)

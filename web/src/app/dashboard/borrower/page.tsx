@@ -9,6 +9,8 @@ import { API_BASE_URL, safeFetch, generateIdempotencyKey } from '@/lib/api';
 import FundAccount from '@/components/FundAccount';
 import BalanceCard from '@/components/BalanceCard';
 import { fetchBalances, type Balances } from '@/lib/balances';
+import { buildPaymentXDR } from '@/lib/payment';
+import { signAndSubmit } from '@/lib/sign';
 
 export default function MyCredit() {
   const { publicKey } = useWallet();
@@ -24,13 +26,13 @@ export default function MyCredit() {
     if (!publicKey) return;
     try {
       const [loansResult, profileResult, balData] = await Promise.all([
-        safeFetch(`${API_BASE_URL}/api/loans/${publicKey}`),
+        safeFetch(`${API_BASE_URL}/api/loans/borrowed/${publicKey}`),
         safeFetch(`${API_BASE_URL}/api/users/profile/${publicKey}`),
         fetchBalances(publicKey)
       ]);
 
       if (loansResult.ok) {
-        setLoans(loansResult.data.filter((l: any) => l.borrower_wallet === publicKey));
+        setLoans(loansResult.data);
       }
       if (profileResult.ok) {
         setProfile(profileResult.data);
@@ -49,34 +51,45 @@ export default function MyCredit() {
   }, [fetchData]);
 
   const handleRepay = async (loanId: string, amount: string) => {
+    const loan = loans.find(l => l.id === loanId);
+    if (!loan || !publicKey) return;
+
     setActionLoading(loanId);
     setStatusMessage({ type: '', text: '' });
     
     try {
+      // 1. Build and sign transaction
+      const paymentAmount = loan.next_installment ? loan.next_installment.amount_xlm : amount;
+      setStatusMessage({ type: 'success', text: `Please sign the ${paymentAmount} XLM payment in Freighter...` });
+      
+      const xdr = await buildPaymentXDR(publicKey, loan.merchant_wallet, paymentAmount);
+      const txHash = await signAndSubmit(xdr, publicKey);
+      
+      setStatusMessage({ type: 'success', text: 'Payment confirmed on-chain! Syncing with backend...' });
+
+      // 2. Notify backend of the payment
       const result = await safeFetch(`${API_BASE_URL}/api/loans/repay`, {
         method: 'POST',
         body: JSON.stringify({
           loan_id: loanId,
           amount_xlm: amount,
           wallet_address: publicKey,
+          tx_hash: txHash,
           idempotency_key: generateIdempotencyKey()
         }),
       });
 
       if (result.ok) {
-        setStatusMessage({ type: 'success', text: 'Repayment processed successfully. Updating records...' });
-        // Small delay to allow DB update to propagate
-        setTimeout(async () => {
-          await fetchData();
-          setActionLoading(null);
-        }, 1500);
+        setStatusMessage({ type: 'success', text: 'Repayment successfully recorded. Your balance and credit have been updated.' });
+        // Refresh immediately to show new balance and updated status
+        await fetchData();
       } else {
-        setStatusMessage({ type: 'error', text: result.error || 'Repayment failed.' });
-        setActionLoading(null);
+        setStatusMessage({ type: 'error', text: result.error || 'Payment was sent but backend update failed. Please contact support.' });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Repayment error:', e);
-      setStatusMessage({ type: 'error', text: 'Connection error during repayment.' });
+      setStatusMessage({ type: 'error', text: e.message || 'Payment failed or was cancelled.' });
+    } finally {
       setActionLoading(null);
     }
   };
@@ -191,26 +204,36 @@ export default function MyCredit() {
                   
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-8 w-full md:w-auto text-center md:text-left border-t md:border-t-0 border-white/5 pt-6 md:pt-0">
                     <div>
-                      <p className="text-[10px] text-gray-500 uppercase font-black mb-1 tracking-widest">Total</p>
-                      <p className="font-black text-white italic">{loan.amount_xlm} XLM</p>
+                      <p className="text-[10px] text-gray-500 uppercase font-black mb-1 tracking-widest">
+                        {loan.status === 'paid' ? 'Total' : (loan.next_installment ? `Next (#${loan.next_installment.installment_number})` : 'Total')}
+                      </p>
+                      <p className="font-black text-white italic">
+                        {loan.status === 'paid' ? loan.amount_xlm : (loan.next_installment ? loan.next_installment.amount_xlm : loan.amount_xlm)} XLM
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] text-gray-500 uppercase font-black mb-1 tracking-widest">Status</p>
-                      <p className={`font-black uppercase text-[10px] tracking-widest px-2 py-1 rounded inline-block ${loan.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500'}`}>{loan.status}</p>
+                      <p className={`font-black uppercase text-[10px] tracking-widest px-2 py-1 rounded inline-block ${loan.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                        {loan.status === 'paid' ? 'Paid' : (loan.next_installment ? `${loan.installments.filter((ins: any) => ins.status === 'completed').length}/3 Paid` : 'Active')}
+                      </p>
                     </div>
                     <div className="hidden md:block">
-                      <p className="text-[10px] text-gray-500 uppercase font-black mb-1 tracking-widest">Created</p>
-                      <p className="font-medium text-xs text-gray-400">{new Date(loan.created_at).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-gray-500 uppercase font-black mb-1 tracking-widest">
+                        {loan.status === 'paid' ? 'Completed' : 'Next Due'}
+                      </p>
+                      <p className="font-medium text-xs text-gray-400">
+                        {loan.status === 'paid' ? new Date(loan.updated_at).toLocaleDateString() : (loan.next_installment ? new Date(loan.next_installment.due_date).toLocaleDateString() : new Date(loan.created_at).toLocaleDateString())}
+                      </p>
                     </div>
                   </div>
                   
                   {loan.status !== 'paid' && (
                     <button 
-                      onClick={() => handleRepay(loan.id, loan.amount_xlm)}
+                      onClick={() => handleRepay(loan.id, loan.next_installment ? loan.next_installment.amount_xlm : loan.amount_xlm)}
                       disabled={!!actionLoading}
-                      className="w-full md:w-auto px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-black transition shadow-lg shadow-purple-500/20 uppercase tracking-widest italic text-white"
+                      className="w-full md:w-auto px-10 py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-black transition shadow-lg shadow-purple-500/20 uppercase tracking-widest italic text-white"
                     >
-                      {actionLoading === loan.id ? 'Processing...' : 'Pay Now'}
+                      {actionLoading === loan.id ? 'Processing...' : (loan.next_installment ? `Pay Installment #${loan.next_installment.installment_number}` : 'Pay Now')}
                     </button>
                   )}
                 </div>

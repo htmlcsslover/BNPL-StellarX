@@ -85,7 +85,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-6 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-[2rem] font-black transition-all hover:scale-[1.02] shadow-2xl shadow-purple-500/30 uppercase tracking-[0.2em] italic text-white"
+            className="w-full py-6 px-10 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-[2rem] font-black transition-all hover:scale-[1.02] shadow-2xl shadow-purple-500/30 uppercase tracking-[0.2em] italic text-white"
           >
             {isSubmitting ? 'Initializing Profile...' : 'Begin Journey'}
           </button>

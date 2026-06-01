@@ -27,12 +27,12 @@ export default function MyStore() {
     try {
       const [prodRes, salesRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/products/seller/${user.wallet_address}`),
-        fetch(`${API_BASE_URL}/api/loans/${user.wallet_address}`)
+        fetch(`${API_BASE_URL}/api/loans/lent/${user.wallet_address}`)
       ]);
       const prodData = await prodRes.json();
       const salesData = await salesRes.json();
       setProducts(prodData);
-      setSales(salesData.filter((s: any) => s.merchant_wallet === user.wallet_address));
+      setSales(salesData);
     } catch (e) {
       console.error(e);
     } finally {
@@ -106,7 +106,7 @@ export default function MyStore() {
         </div>
         
         <div className="absolute -bottom-6 right-8">
-           <Link href="/dashboard/seller/create" className="px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-2xl transition-all shadow-xl shadow-purple-500/20 uppercase tracking-widest italic text-xs">
+           <Link href="/dashboard/seller/create" className="px-10 py-4 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-2xl transition-all shadow-xl shadow-purple-500/20 uppercase tracking-widest italic text-xs">
             + Create Listing
           </Link>
         </div>
@@ -167,7 +167,7 @@ export default function MyStore() {
                     </div>
                     <button 
                       onClick={() => deleteProduct(product.id)}
-                      className="w-full py-3 bg-red-500/5 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition border border-red-500/5"
+                      className="w-full py-4 px-6 bg-red-500/5 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition border border-red-500/5"
                     >
                       Delete Item
                     </button>

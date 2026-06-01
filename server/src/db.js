@@ -105,11 +105,9 @@ async function initDb() {
       table.string('merchant_wallet').notNullable();
       table.uuid('product_id').references('products.id').onDelete('CASCADE');
       table.decimal('amount_xlm', 20, 7).notNullable();
-      table.enum('status', ['active', 'paid', 'defaulted']).defaultTo('active');
+      table.enum('status', ['active', 'paid', 'defaulted', 'cancelled']).defaultTo('active');
       table.timestamp('created_at').defaultTo(db.fn.now());
       table.timestamp('updated_at').defaultTo(db.fn.now());
-      // Prevent duplicate active loans for same borrower+product
-      table.unique(['borrower_wallet', 'product_id']);
     });
   } else {
     // Migration: Ensure amount_xlm column exists and wallets are NOT NULL
@@ -131,6 +129,86 @@ async function initDb() {
       } catch (e) {
         // Column may already exist
       }
+    }
+
+    // Surgical migration: Remove the unique constraint if it exists (SQLite doesn't support DROP CONSTRAINT)
+    const indexes = await db.raw("PRAGMA index_list('loans')");
+    const hasUniqueConstraint = indexes.some(idx => idx.unique === 1 && (idx.origin === 'u' || idx.origin === 'c') && idx.name.includes('borrower_wallet_product_id'));
+    
+    if (hasUniqueConstraint) {
+      console.log('Migrating loans table to remove unique constraint...');
+      await db.transaction(async (trx) => {
+        // 1. Create temp table
+        await trx.schema.createTable('loans_temp', (table) => {
+          table.uuid('id').primary();
+          table.string('contract_id').unique().notNullable();
+          table.string('borrower_wallet').notNullable();
+          table.string('merchant_wallet').notNullable();
+          table.uuid('product_id').references('products.id').onDelete('CASCADE');
+          table.decimal('amount_xlm', 20, 7).notNullable();
+          table.enum('status', ['active', 'paid', 'defaulted', 'cancelled']).defaultTo('active');
+          table.timestamp('created_at').defaultTo(db.fn.now());
+          table.timestamp('updated_at').defaultTo(db.fn.now());
+        });
+        
+        // 2. Copy data to temp
+        await trx.raw(`
+          INSERT INTO loans_temp (id, contract_id, borrower_wallet, merchant_wallet, product_id, amount_xlm, status, created_at, updated_at)
+          SELECT id, contract_id, borrower_wallet, merchant_wallet, product_id, amount_xlm, status, created_at, updated_at FROM loans
+        `);
+        
+        // 3. Drop original table (this also drops its indexes)
+        await trx.raw("DROP TABLE loans");
+        
+        // 4. Recreate original table with new schema
+        await trx.schema.createTable('loans', (table) => {
+          table.uuid('id').primary();
+          table.string('contract_id').unique().notNullable();
+          table.string('borrower_wallet').notNullable();
+          table.string('merchant_wallet').notNullable();
+          table.uuid('product_id').references('products.id').onDelete('CASCADE');
+          table.decimal('amount_xlm', 20, 7).notNullable();
+          table.enum('status', ['active', 'paid', 'defaulted', 'cancelled']).defaultTo('active');
+          table.timestamp('created_at').defaultTo(db.fn.now());
+          table.timestamp('updated_at').defaultTo(db.fn.now());
+        });
+        
+        // 5. Copy data back
+        await trx.raw(`
+          INSERT INTO loans (id, contract_id, borrower_wallet, merchant_wallet, product_id, amount_xlm, status, created_at, updated_at)
+          SELECT id, contract_id, borrower_wallet, merchant_wallet, product_id, amount_xlm, status, created_at, updated_at FROM loans_temp
+        `);
+        
+        // 6. Drop temp table
+        await trx.raw("DROP TABLE loans_temp");
+      });
+      console.log('Loans table migrated successfully.');
+    }
+  }
+
+  // Repayments table for tracking individual payments (MVP: tracks full repayment only)
+  const hasRepayments = await db.schema.hasTable('repayments');
+  if (!hasRepayments) {
+    await db.schema.createTable('repayments', (table) => {
+      table.uuid('id').primary();
+      table.uuid('loan_id').references('loans.id').onDelete('CASCADE').notNullable();
+      table.string('wallet_address').notNullable();  // Repayer address
+      table.decimal('amount_xlm', 20, 7).notNullable();
+      table.integer('installment_number').nullable(); // 1, 2, or 3
+      table.timestamp('due_date').nullable();
+      table.enum('status', ['pending', 'completed', 'failed']).defaultTo('pending');
+      table.string('tx_hash').nullable();  // Stellar transaction hash (when integrated)
+      table.timestamp('created_at').defaultTo(db.fn.now());
+    });
+    console.log('Created repayments table');
+  } else {
+    const hasInstallmentNumber = await db.schema.hasColumn('repayments', 'installment_number');
+    if (!hasInstallmentNumber) {
+      await db.schema.table('repayments', (table) => {
+        table.integer('installment_number');
+        table.timestamp('due_date');
+      });
+      console.log('Migrated repayments table: added installment_number and due_date');
     }
   }
 }

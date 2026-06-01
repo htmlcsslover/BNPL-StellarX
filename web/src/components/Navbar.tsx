@@ -55,14 +55,23 @@ export default function Navbar() {
           )}
           
           {wallet.publicKey && user ? (
-            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-black text-white leading-none mb-1 uppercase">{user.display_name}</p>
-                <p className="text-[9px] font-bold text-yellow-500 uppercase tracking-widest italic">Member</p>
+            <div className="flex items-center gap-4 pl-4 border-l border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-black text-white leading-none mb-1 uppercase">{user.display_name}</p>
+                  <p className="text-[9px] font-bold text-yellow-500 uppercase tracking-widest italic">Member</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center border-2 border-white/10 shadow-lg shadow-purple-500/10 font-bold text-white uppercase italic">
+                  {user.display_name.slice(0, 1).toUpperCase()}
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center border-2 border-white/10 shadow-lg shadow-purple-500/10 font-bold text-white uppercase italic">
-                {user.display_name.slice(0, 1).toUpperCase()}
-              </div>
+              <button 
+                onClick={() => wallet.disconnect()}
+                className="p-2 rounded-lg bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition border border-white/5 hover:border-red-500/20 shadow-sm"
+                title="Disconnect Wallet"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </button>
             </div>
           ) : (
             <ConnectWallet {...wallet} />

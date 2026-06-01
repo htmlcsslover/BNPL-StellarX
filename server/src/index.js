@@ -6,6 +6,18 @@ const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
+// Process-level error handlers to prevent silent crashes
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err);
+  // In a real production app, we might want to gracefully shut down
+  // but for hackathon MVP, we log and keep going if possible, 
+  // or let the process manager restart it.
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const app = express();
 
 // Codespaces specific CORS handling
@@ -233,6 +245,44 @@ app.get('/api/loans/:wallet', async (req, res) => {
   }
 });
 
+app.get('/api/loans/borrowed/:wallet', async (req, res) => {
+  try {
+    const wallet = req.params.wallet;
+    if (!/^G[A-Z2-7]{55}$/.test(wallet)) {
+      return res.status(400).json({ error: 'Invalid Stellar wallet address format' });
+    }
+    const loans = await db('loans').where({ borrower_wallet: wallet });
+    
+    // Include installments for each loan
+    for (const loan of loans) {
+      loan.installments = await db('repayments').where({ loan_id: loan.id }).orderBy('installment_number', 'asc');
+      loan.next_installment = loan.installments.find(i => i.status === 'pending');
+    }
+    
+    res.json(loans);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/loans/lent/:wallet', async (req, res) => {
+  try {
+    const wallet = req.params.wallet;
+    if (!/^G[A-Z2-7]{55}$/.test(wallet)) {
+      return res.status(400).json({ error: 'Invalid Stellar wallet address format' });
+    }
+    const loans = await db('loans').where({ merchant_wallet: wallet });
+    
+    for (const loan of loans) {
+      loan.installments = await db('repayments').where({ loan_id: loan.id }).orderBy('installment_number', 'asc');
+    }
+    
+    res.json(loans);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/loans', extractWalletAddress, withIdempotency, async (req, res) => {
   const { borrower_wallet, merchant_wallet, product_id, amount_xlm } = req.body;
   
@@ -270,10 +320,37 @@ app.post('/api/loans', extractWalletAddress, withIdempotency, async (req, res) =
       return res.status(404).json({ error: 'Merchant not found' });
     }
 
-    // Verify product exists
+    // Verify product exists and is active
     const product = await db('products').where({ id: product_id }).first();
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
+    }
+    
+    if (product.status !== 'active') {
+      return res.status(409).json({ 
+        error: 'Product is not available for purchase',
+        product_status: product.status
+      });
+    }
+    
+    // CRITICAL: Verify amount matches product price (prevent frontend price manipulation)
+    const productPrice = parseFloat(product.price_xlm);
+    if (parsedAmount !== productPrice) {
+      return res.status(400).json({ 
+        error: 'Loan amount does not match product price',
+        requested_amount: parsedAmount,
+        product_price: productPrice,
+        hint: 'Price may have changed. Please refresh the marketplace and try again.'
+      });
+    }
+    
+    // Verify merchant matches product seller
+    if (merchant_wallet !== product.seller_wallet) {
+      return res.status(400).json({ 
+        error: 'Merchant wallet does not match product seller',
+        provided_merchant: merchant_wallet,
+        product_seller: product.seller_wallet
+      });
     }
 
     // Check if loan already exists (prevent duplicates)
@@ -282,32 +359,56 @@ app.post('/api/loans', extractWalletAddress, withIdempotency, async (req, res) =
       .first();
     if (existing) {
       console.log(`Duplicate loan request prevented: ${borrower_wallet} for product ${product_id}`);
-      return res.json(existing);
+      return res.status(409).json({ 
+        error: 'You already have an active loan for this product',
+        existing_loan_id: existing.id
+      });
     }
 
-    // Create loan record
+    // Create loan record with data from product record (not frontend)
     const loan = {
       id: uuidv4(),
       contract_id: `loan_${uuidv4().slice(0, 8)}`,
       borrower_wallet,
-      merchant_wallet,
+      merchant_wallet: product.seller_wallet,  // Use product seller, not frontend value
       product_id,
-      amount_xlm: parsedAmount,
+      amount_xlm: productPrice,  // Use product price, not frontend value
       status: 'active'
     };
-    await db('loans').insert(loan);
+    try {
+      await db('loans').insert(loan);
+    } catch (insertError) {
+      if (insertError.message.includes('UNIQUE constraint failed')) {
+        return res.status(409).json({ 
+          error: 'An unexpected duplicate constraint was hit. Please ensure you do not have an active loan for this product.',
+          details: insertError.message
+        });
+      }
+      throw insertError; // Re-throw if it's a different error
+    }
 
     // Create order record
     await db('orders').insert({
       id: uuidv4(),
       buyer_wallet: borrower_wallet,
-      seller_wallet: merchant_wallet,
+      seller_wallet: product.seller_wallet,  // Use product seller, not frontend value
       product_id,
       loan_id: loan.id,
       status: 'pending'
     });
 
-    console.log(`Loan created: ${loan.id} (${borrower_wallet} → ${merchant_wallet})`);
+    // Create 3 installments (33.3% each, rounding handles last)
+    const installmentAmount = parseFloat((productPrice / 3).toFixed(7));
+    const lastInstallmentAmount = parseFloat((productPrice - (installmentAmount * 2)).toFixed(7));
+
+    const repayments = [
+      { id: uuidv4(), loan_id: loan.id, wallet_address: borrower_wallet, amount_xlm: installmentAmount, installment_number: 1, due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), status: 'pending' },
+      { id: uuidv4(), loan_id: loan.id, wallet_address: borrower_wallet, amount_xlm: installmentAmount, installment_number: 2, due_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), status: 'pending' },
+      { id: uuidv4(), loan_id: loan.id, wallet_address: borrower_wallet, amount_xlm: lastInstallmentAmount, installment_number: 3, due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), status: 'pending' }
+    ];
+    await db('repayments').insert(repayments);
+
+    console.log(`Loan created: ${loan.id} (${borrower_wallet} → ${product.seller_wallet}) with 3 installments`);
     res.json(loan);
   } catch (error) {
     console.error('Create loan error:', error);
@@ -316,10 +417,24 @@ app.post('/api/loans', extractWalletAddress, withIdempotency, async (req, res) =
 });
 
 app.post('/api/loans/repay', extractWalletAddress, withIdempotency, async (req, res) => {
-  const { loan_id, amount_xlm, wallet_address } = req.body;
+  const { loan_id, amount_xlm, wallet_address, tx_hash } = req.body;
   
-  if (!loan_id || !amount_xlm) {
-    return res.status(400).json({ error: 'Missing loan_id or amount_xlm' });
+  if (!loan_id) {
+    return res.status(400).json({ error: 'Missing loan_id' });
+  }
+  
+  if (amount_xlm === undefined || amount_xlm === null) {
+    return res.status(400).json({ error: 'Missing amount_xlm' });
+  }
+  
+  // Parse and validate amount
+  const parsedAmount = parseFloat(amount_xlm);
+  if (isNaN(parsedAmount) || !isFinite(parsedAmount)) {
+    return res.status(400).json({ error: 'Invalid amount_xlm - must be a valid number' });
+  }
+  
+  if (parsedAmount <= 0) {
+    return res.status(400).json({ error: 'Repayment amount must be positive' });
   }
   
   if (!wallet_address) {
@@ -357,16 +472,92 @@ app.post('/api/loans/repay', extractWalletAddress, withIdempotency, async (req, 
     }
     
     if (loan.status === 'paid') {
-      return res.json({ message: 'Repayment already processed', loan_id, status: 'paid' });
+      return res.status(409).json({ 
+        message: 'Loan already repaid',
+        loan_id,
+        status: 'paid'
+      });
     }
 
-    // In production: Verify actual token transfer on Soroban contract
-    // MVP: Update database status
-    await db('loans').where({ id: loan_id }).update({ status: 'paid' });
-    await db('orders').where({ loan_id }).update({ status: 'paid' });
+    if (loan.status === 'defaulted') {
+      return res.status(409).json({ 
+        error: 'Cannot repay a defaulted loan',
+        loan_id,
+        status: 'defaulted',
+        hint: 'Contact support to resolve this loan'
+      });
+    }
 
-    console.log(`Loan repaid: ${loan_id} (${wallet_address})`);
-    res.json({ message: 'Repayment successful', loan_id, status: 'paid' });
+    if (loan.status === 'cancelled') {
+      return res.status(409).json({ 
+        error: 'Cannot repay a cancelled loan',
+        loan_id,
+        status: 'cancelled'
+      });
+    }
+
+    // Find next pending installment
+    const nextInstallment = await db('repayments')
+      .where({ loan_id, status: 'pending' })
+      .orderBy('installment_number', 'asc')
+      .first();
+
+    if (!nextInstallment) {
+      // If no installments found (e.g. old loan), fallback to full-balance logic
+      const outstandingBalance = parseFloat(loan.amount_xlm);
+      if (parsedAmount !== outstandingBalance) {
+        return res.status(400).json({ 
+          error: 'MVP supports full-balance repayment only',
+          outstanding_balance: outstandingBalance,
+          provided_amount: parsedAmount
+        });
+      }
+      
+      await db('loans').where({ id: loan_id }).update({ status: 'paid' });
+      await db('orders').where({ loan_id }).update({ status: 'paid' });
+      
+      return res.json({ 
+        message: 'Repayment successful (full balance)',
+        loan_id,
+        status: 'paid'
+      });
+    }
+
+    // Verify amount matches next installment
+    const installmentAmount = parseFloat(nextInstallment.amount_xlm);
+    if (Math.abs(parsedAmount - installmentAmount) > 0.0000001) {
+      return res.status(400).json({ 
+        error: `Amount mismatch for installment #${nextInstallment.installment_number}`,
+        expected: installmentAmount,
+        received: parsedAmount,
+        hint: `Please pay exactly ${installmentAmount} XLM for this installment.`
+      });
+    }
+
+    // Mark installment as completed
+    await db('repayments').where({ id: nextInstallment.id }).update({ 
+      status: 'completed',
+      tx_hash: tx_hash || 'simulated_tx_hash' // Use provided hash or fallback
+    });
+
+    // Check if all installments are paid
+    const remaining = await db('repayments').where({ loan_id, status: 'pending' }).count('id as count').first();
+    const isFullyPaid = parseInt(remaining.count) === 0;
+
+    if (isFullyPaid) {
+      await db('loans').where({ id: loan_id }).update({ status: 'paid' });
+      await db('orders').where({ loan_id }).update({ status: 'paid' });
+    }
+
+    console.log(`Installment #${nextInstallment.installment_number} paid for loan ${loan_id}`);
+    res.json({ 
+      message: isFullyPaid ? 'Loan fully repaid' : `Installment #${nextInstallment.installment_number} paid successfully`,
+      loan_id,
+      installment_number: nextInstallment.installment_number,
+      is_fully_paid: isFullyPaid,
+      status: isFullyPaid ? 'paid' : 'active',
+      next_installment_due: !isFullyPaid ? (await db('repayments').where({ loan_id, status: 'pending' }).orderBy('installment_number', 'asc').first())?.due_date : null
+    });
   } catch (error) {
     console.error('Repay loan error:', error);
     res.status(500).json({ error: error.message });
@@ -439,9 +630,21 @@ app.get('/api/pool/stats', async (req, res) => {
   });
 });
 
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled Express Error:', err);
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
 // Start server
 initDb().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
 });

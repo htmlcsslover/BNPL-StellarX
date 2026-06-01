@@ -71,7 +71,7 @@ export default function FundAccount({ publicKey, onFunded }: FundAccountProps) {
         type="button"
         onClick={fundAccount}
         disabled={loading || !publicKey}
-        className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 font-bold text-amber-950 transition disabled:opacity-50 shadow-lg shadow-amber-500/10 uppercase text-xs tracking-widest"
+        className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 px-8 py-4 font-bold text-amber-950 transition disabled:opacity-50 shadow-lg shadow-amber-500/10 uppercase text-xs tracking-widest"
       >
         {loading ? "Funding..." : "Fund with Friendbot"}
       </button>

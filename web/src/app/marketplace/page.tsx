@@ -204,7 +204,7 @@ export default function Marketplace() {
               <button 
                 onClick={handleBNPL}
                 disabled={actionLoading}
-                className="w-full py-5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black rounded-2xl transition-all hover:scale-[1.02] shadow-xl shadow-purple-500/30 uppercase tracking-[0.1em] italic"
+                className="w-full py-5 px-10 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black rounded-2xl transition-all hover:scale-[1.02] shadow-xl shadow-purple-500/30 uppercase tracking-[0.1em] italic"
               >
                 {actionLoading ? 'Authorizing...' : 'Confirm BNPL Purchase'}
               </button>
