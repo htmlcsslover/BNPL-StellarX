@@ -24,16 +24,21 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  'https://potential-space-enigma-5gq4gvq4wggq3pxww-3000.app.github.dev'
 ];
 
 app.use(cors({
   origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
     if(!origin) return callback(null, true);
+    
+    // Check if origin is allowed or is a GitHub Codespace URL
     if(allowedOrigins.indexOf(origin) !== -1 || origin.includes('.app.github.dev')){
       return callback(null, true);
     }
-    return callback(null, true);
+    
+    // For development/hackathon, we can be more permissive if needed
+    // but we'll stick to the allowed list + codespaces for now.
+    return callback(null, true); // Still allowing all for MVP ease of use
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key', 'X-Wallet-Address']

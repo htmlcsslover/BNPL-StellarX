@@ -39,9 +39,16 @@ export async function safeFetch(url: string, options: RequestInit = {}) {
     return { ok: true, data };
   } catch (e) {
     console.error('SafeFetch Exception:', e);
+    const isCodespace = typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev');
+    let errorMsg = 'Failed to connect to the backend. Please ensure the server is running on port 3001.';
+    
+    if (isCodespace && API_BASE_URL.includes('localhost')) {
+      errorMsg += ' HINT: You are in a Codespace but using localhost for API. Update NEXT_PUBLIC_API_URL to your Codespace HTTPS URL.';
+    }
+    
     return { 
       ok: false, 
-      error: 'Failed to connect to the backend. Please ensure the server is running on port 3001.' 
+      error: errorMsg
     };
   }
 }
